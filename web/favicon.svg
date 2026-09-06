@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 450 120" width="100%" height="100%">
+  <!-- Minimalist Tech Icon -->
+  <g transform="translate(10, 15)">
+    <!-- Smooth Gradient Effect Area using basic shapes -->
+    <rect width="90" height="90" rx="24" fill="#0F172A" />
+    <!-- The abstract interlocking C and F lines -->
+    <path d="M60 30 H40 C34 30 30 34 30 40 V50 C30 56 34 60 40 60 H55" stroke="#2563EB" stroke-width="6" stroke-linecap="round" fill="none"/>
+    <path d="M45 45 H60 M45 30 V60" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.95"/>
+    <!-- Precision dot indicator -->
+    <circle cx="60" cy="60" r="4" fill="#2563EB" />
+  </g>
+
+  <!-- Typography Area (English Text) -->
+  <!-- Main Brand Name -->
+  <text x="125" y="62" font-family="'Inter', 'Plus Jakarta Sans', sans-serif" font-size="36" font-weight="300" fill="#0F172A" letter-spacing="-0.5">Craft<tspan font-weight="800" fill="#2563EB">Flow</tspan></text>
+  
+  <!-- Sub-text / Tagline -->
+  <text x="127" y="88" font-family="'Inter', sans-serif" font-size="12" font-weight="600" fill="#94A3B8" letter-spacing="1.5">SMART CRAFTING NETWORK</text>
+</svg>

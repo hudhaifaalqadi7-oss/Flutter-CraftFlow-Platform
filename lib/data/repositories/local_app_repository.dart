@@ -1,73 +1,128 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../domain/entities/app_models.dart';
+import '../services/api_service.dart';
 
 class LocalAppRepository {
-  const LocalAppRepository();
+  final ApiService _apiService;
+
+  const LocalAppRepository({ApiService? apiService})
+      : _apiService = apiService ?? const _DefaultApiService();
 
   Future<List<CraftOrder>> loadOrders(String workshopId) async {
     final preferences = await SharedPreferences.getInstance();
+    
+    // 1. محاولة جلب البيانات من الـ API
+    final remoteData = await _apiService.fetchOrders(workshopId);
+    if (remoteData.isNotEmpty) {
+      final orders = remoteData.map((e) => CraftOrder.fromJson(e)).toList();
+      
+      // حفظ البيانات محلياً كـ Cache
+      await preferences.setStringList(
+        'orders_$workshopId',
+        orders.map((item) => jsonEncode(item.toJson())).toList(),
+      );
+      return orders;
+    }
+
+    // 2. الرجوع إلى التخزين المحلي في حال فشل الاتصال أو عدم وجود شبكة
     final raw = preferences.getStringList('orders_$workshopId') ?? <String>[];
-    return raw.map((value) => CraftOrder.fromJson(jsonDecode(value) as Map<String, dynamic>)).toList();
+    return raw
+        .map((value) =>
+            CraftOrder.fromJson(jsonDecode(value) as Map<String, dynamic>))
+        .toList();
   }
 
-  Future<void> saveOrder(CraftOrder order) async {
+  Future<bool> saveOrder(CraftOrder order) async {
     final preferences = await SharedPreferences.getInstance();
-    final orders = await loadOrders(order.workshopId);
-    orders.add(order);
-    await preferences.setStringList('orders_${order.workshopId}', orders.map((item) => jsonEncode(item.toJson())).toList());
+    
+    // إرسال للـ API
+    final success = await _apiService.createOrder(order.toJson());
+
+    if (success) {
+      final orders = await _apiService.fetchOrders(order.workshopId);
+      await preferences.setStringList(
+        'orders_${order.workshopId}',
+        orders.map((item) => jsonEncode(CraftOrder.fromJson(item).toJson())).toList(),
+      );
+    }
+
+    return success;
   }
 
-  Future<void> updateOrder(CraftOrder order) async {
+  Future<bool> updateOrder(CraftOrder order) async {
     final preferences = await SharedPreferences.getInstance();
-    final orders = await loadOrders(order.workshopId);
-    final index = orders.indexWhere((item) => item.id == order.id);
-    if (index >= 0) orders[index] = order;
-    await preferences.setStringList('orders_${order.workshopId}', orders.map((item) => jsonEncode(item.toJson())).toList());
+    
+    // إرسال التحديث للـ API
+    final success = await _apiService.updateOrder(order.id, order.toJson());
+
+    if (success) {
+      final orders = await loadOrders(order.workshopId);
+      final index = orders.indexWhere((item) => item.id == order.id);
+      if (index >= 0) orders[index] = order;
+      await preferences.setStringList(
+        'orders_${order.workshopId}',
+        orders.map((item) => jsonEncode(item.toJson())).toList(),
+      );
+    }
+
+    return success;
   }
 
   Future<List<InventoryItem>> loadInventory(String workshopId) async {
     final preferences = await SharedPreferences.getInstance();
+    
+    final remoteData = await _apiService.fetchInventory(workshopId);
+    if (remoteData.isNotEmpty) {
+      final inventory = remoteData.map((e) => InventoryItem.fromJson(e)).toList();
+      await saveInventory(workshopId, inventory);
+      return inventory;
+    }
+
     final raw = preferences.getStringList('inventory_$workshopId');
-    if (raw != null) return raw.map((value) => InventoryItem.fromJson(jsonDecode(value) as Map<String, dynamic>)).toList();
-    return [InventoryItem(name: workshopId == 'aluminum' ? 'قطاعات حرارية' : 'خامات أساسية', unit: 'وحدة', quantity: 42, minimum: 10), InventoryItem(name: 'مواد تثبيت وتشطيب', unit: 'وحدة', quantity: 18, minimum: 8)];
+    if (raw != null) {
+      return raw
+          .map((value) =>
+              InventoryItem.fromJson(jsonDecode(value) as Map<String, dynamic>))
+          .toList();
+    }
+    
+    return [];
   }
 
-  Future<void> saveInventory(String workshopId, List<InventoryItem> inventory) async {
+  Future<void> saveInventory(
+      String workshopId, List<InventoryItem> inventory) async {
     final preferences = await SharedPreferences.getInstance();
-    await preferences.setStringList('inventory_$workshopId', inventory.map((item) => jsonEncode(item.toJson())).toList());
+    await preferences.setStringList(
+      'inventory_$workshopId',
+      inventory.map((item) => jsonEncode(item.toJson())).toList(),
+    );
+  }
+
+  Future<bool> updateInventory(InventoryItem item, String workshopId) async {
+    final success = await _apiService.updateInventory(item.id, item.quantity);
+    if (success) {
+      final inventory = await loadInventory(workshopId);
+      final updated = inventory.map((entry) => entry.id == item.id ? item : entry).toList();
+      await saveInventory(workshopId, updated);
+    }
+    return success;
+  }
+
+  Future<bool> deleteInventory(InventoryItem item, String workshopId) async {
+    final success = await _apiService.deleteInventory(item.id);
+    if (success) {
+      final inventory = await loadInventory(workshopId);
+      await saveInventory(workshopId, inventory.where((entry) => entry.id != item.id).toList());
+    }
+    return success;
+  }
+
+  Future<bool> deleteOrder(String orderId) async {
+    return _apiService.deleteOrder(orderId);
   }
 }
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../../domain/entities/app_models.dart';
 
-class LocalAppRepository {
-  const LocalAppRepository();
-
-  Future<List<CraftOrder>> loadOrders() async {
-    final preferences = await SharedPreferences.getInstance();
-    final raw = preferences.getStringList('craftflow_orders') ?? [];
-    return raw.map((item) => CraftOrder.fromJson(jsonDecode(item) as Map<String, dynamic>)).toList();
-  }
-
-  Future<void> saveOrder(CraftOrder order) async {
-    final preferences = await SharedPreferences.getInstance();
-    final orders = await loadOrders();
-    orders.removeWhere((item) => item.id == order.id);
-    orders.add(order);
-    await preferences.setStringList('craftflow_orders', orders.map((item) => jsonEncode(item.toJson())).toList());
-  }
-
-  Future<List<InventoryItem>> loadInventory(String workshopId) async {
-    final preferences = await SharedPreferences.getInstance();
-    final raw = preferences.getStringList('craftflow_inventory_$workshopId');
-    if (raw != null) return raw.map((item) => InventoryItem.fromJson(jsonDecode(item) as Map<String, dynamic>)).toList();
-    return [InventoryItem(name: workshopId == 'aluminum' ? 'قطاعات حرارية' : 'مواد خام أساسية', unit: 'وحدة', quantity: 42, minimum: 10), InventoryItem(name: 'مواد تثبيت وتشطيب', unit: 'وحدة', quantity: 18, minimum: 8)];
-  }
-
-  Future<void> saveInventory(String workshopId, List<InventoryItem> items) async {
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setStringList('craftflow_inventory_$workshopId', items.map((item) => jsonEncode(item.toJson())).toList());
-  }
+class _DefaultApiService extends ApiService {
+  const _DefaultApiService();
 }
